@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Search, ShoppingCart, DollarSign, TrendingUp } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface Sale {
   id: string;
@@ -21,6 +22,7 @@ interface Sale {
 }
 
 export const SalesManagement = () => {
+  const { toast } = useToast();
   const [sales, setSales] = useState<Sale[]>([
     {
       id: "S001",
@@ -59,8 +61,11 @@ export const SalesManagement = () => {
   ]);
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newSale, setNewSale] = useState<Partial<Sale>>({
-    items: [{ name: "", quantity: 1, price: 0 }]
+    customerName: "",
+    items: [{ name: "", quantity: 1, price: 0 }],
+    paymentMethod: undefined
   });
 
   const filteredSales = sales.filter(sale =>
@@ -69,20 +74,70 @@ export const SalesManagement = () => {
   );
 
   const addSale = () => {
-    if (newSale.customerName && newSale.items && newSale.paymentMethod) {
-      const total = newSale.items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
-      const sale: Sale = {
-        id: `S${(sales.length + 1).toString().padStart(3, '0')}`,
-        customerName: newSale.customerName,
-        items: newSale.items,
-        total,
-        paymentMethod: newSale.paymentMethod,
-        status: "Completed",
-        date: new Date().toISOString().split('T')[0]
-      };
-      setSales([...sales, sale]);
-      setNewSale({ items: [{ name: "", quantity: 1, price: 0 }] });
+    // Validation
+    if (!newSale.customerName || !newSale.customerName.trim()) {
+      toast({
+        title: "Error",
+        description: "Customer name is required",
+        variant: "destructive"
+      });
+      return;
     }
+
+    if (!newSale.paymentMethod) {
+      toast({
+        title: "Error", 
+        description: "Payment method is required",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!newSale.items || newSale.items.length === 0 || !newSale.items[0].name) {
+      toast({
+        title: "Error",
+        description: "At least one item is required",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Check if all items have valid data
+    const invalidItems = newSale.items.filter(item => !item.name || item.quantity <= 0 || item.price <= 0);
+    if (invalidItems.length > 0) {
+      toast({
+        title: "Error",
+        description: "All items must have valid name, quantity, and price",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const total = newSale.items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+    const sale: Sale = {
+      id: `S${(sales.length + 1).toString().padStart(3, '0')}`,
+      customerName: newSale.customerName,
+      items: newSale.items,
+      total,
+      paymentMethod: newSale.paymentMethod,
+      status: "Completed",
+      date: new Date().toISOString().split('T')[0]
+    };
+    
+    setSales([...sales, sale]);
+    
+    // Reset form and close dialog
+    setNewSale({
+      customerName: "",
+      items: [{ name: "", quantity: 1, price: 0 }],
+      paymentMethod: undefined
+    });
+    setIsDialogOpen(false);
+    
+    toast({
+      title: "Success",
+      description: "Sale created successfully"
+    });
   };
 
   const addItem = () => {
@@ -90,6 +145,13 @@ export const SalesManagement = () => {
       ...newSale,
       items: [...(newSale.items || []), { name: "", quantity: 1, price: 0 }]
     });
+  };
+
+  const removeItem = (index: number) => {
+    if (newSale.items && newSale.items.length > 1) {
+      const updatedItems = newSale.items.filter((_, i) => i !== index);
+      setNewSale({ ...newSale, items: updatedItems });
+    }
   };
 
   const updateItem = (index: number, field: string, value: any) => {
@@ -105,7 +167,7 @@ export const SalesManagement = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-gray-900">Sales Management</h1>
-        <Dialog>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button className="bg-blue-600 hover:bg-blue-700">
               <Plus className="h-4 w-4 mr-2" />
@@ -123,13 +185,14 @@ export const SalesManagement = () => {
                   id="customerName"
                   value={newSale.customerName || ""}
                   onChange={(e) => setNewSale({ ...newSale, customerName: e.target.value })}
+                  placeholder="Enter customer name"
                 />
               </div>
               
               <div>
                 <Label>Items</Label>
                 {newSale.items?.map((item, index) => (
-                  <div key={index} className="grid grid-cols-3 gap-2 mt-2">
+                  <div key={index} className="grid grid-cols-4 gap-2 mt-2">
                     <Input
                       placeholder="Item name"
                       value={item.name}
@@ -138,16 +201,26 @@ export const SalesManagement = () => {
                     <Input
                       type="number"
                       placeholder="Qty"
+                      min="1"
                       value={item.quantity}
-                      onChange={(e) => updateItem(index, "quantity", parseInt(e.target.value))}
+                      onChange={(e) => updateItem(index, "quantity", parseInt(e.target.value) || 1)}
                     />
                     <Input
                       type="number"
                       step="0.01"
+                      min="0"
                       placeholder="Price"
                       value={item.price}
-                      onChange={(e) => updateItem(index, "price", parseFloat(e.target.value))}
+                      onChange={(e) => updateItem(index, "price", parseFloat(e.target.value) || 0)}
                     />
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      onClick={() => removeItem(index)}
+                      disabled={newSale.items?.length === 1}
+                    >
+                      Remove
+                    </Button>
                   </div>
                 ))}
                 <Button type="button" variant="outline" onClick={addItem} className="mt-2">

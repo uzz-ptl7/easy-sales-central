@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Search, Edit, Package } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface Product {
   id: string;
@@ -22,6 +23,7 @@ interface Product {
 }
 
 export const InventoryManagement = () => {
+  const { toast } = useToast();
   const [products, setProducts] = useState<Product[]>([
     {
       id: "1",
@@ -56,7 +58,18 @@ export const InventoryManagement = () => {
   ]);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [newProduct, setNewProduct] = useState<Partial<Product>>({});
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [newProduct, setNewProduct] = useState<Partial<Product>>({
+    name: "",
+    sku: "",
+    category: "",
+    price: 0,
+    stock: 0,
+    minStock: 5,
+    description: ""
+  });
 
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -70,27 +83,129 @@ export const InventoryManagement = () => {
   };
 
   const addProduct = () => {
-    if (newProduct.name && newProduct.sku && newProduct.price) {
-      const product: Product = {
-        id: Date.now().toString(),
-        name: newProduct.name,
-        sku: newProduct.sku,
-        category: newProduct.category || "General",
-        price: newProduct.price,
-        stock: newProduct.stock || 0,
-        minStock: newProduct.minStock || 5,
-        description: newProduct.description || ""
-      };
-      setProducts([...products, product]);
-      setNewProduct({});
+    // Validation
+    if (!newProduct.name || !newProduct.name.trim()) {
+      toast({
+        title: "Error",
+        description: "Product name is required",
+        variant: "destructive"
+      });
+      return;
     }
+
+    if (!newProduct.sku || !newProduct.sku.trim()) {
+      toast({
+        title: "Error",
+        description: "SKU is required",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Check if SKU already exists
+    if (products.some(p => p.sku.toLowerCase() === newProduct.sku?.toLowerCase())) {
+      toast({
+        title: "Error",
+        description: "SKU already exists",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!newProduct.price || newProduct.price <= 0) {
+      toast({
+        title: "Error",
+        description: "Price must be greater than 0",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const product: Product = {
+      id: Date.now().toString(),
+      name: newProduct.name,
+      sku: newProduct.sku,
+      category: newProduct.category || "General",
+      price: newProduct.price,
+      stock: newProduct.stock || 0,
+      minStock: newProduct.minStock || 5,
+      description: newProduct.description || ""
+    };
+    
+    setProducts([...products, product]);
+    
+    // Reset form and close dialog
+    setNewProduct({
+      name: "",
+      sku: "",
+      category: "",
+      price: 0,
+      stock: 0,
+      minStock: 5,
+      description: ""
+    });
+    setIsAddDialogOpen(false);
+    
+    toast({
+      title: "Success",
+      description: "Product added successfully"
+    });
+  };
+
+  const editProduct = (product: Product) => {
+    setEditingProduct(product);
+    setIsEditDialogOpen(true);
+  };
+
+  const updateProduct = () => {
+    if (!editingProduct) return;
+
+    // Validation
+    if (!editingProduct.name || !editingProduct.name.trim()) {
+      toast({
+        title: "Error",
+        description: "Product name is required",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!editingProduct.sku || !editingProduct.sku.trim()) {
+      toast({
+        title: "Error",
+        description: "SKU is required",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (editingProduct.price <= 0) {
+      toast({
+        title: "Error",
+        description: "Price must be greater than 0",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setProducts(products.map(p => 
+      p.id === editingProduct.id ? editingProduct : p
+    ));
+    
+    setIsEditDialogOpen(false);
+    setEditingProduct(null);
+    
+    toast({
+      title: "Success",
+      description: "Product updated successfully"
+    });
   };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-gray-900">Inventory Management</h1>
-        <Dialog>
+        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
             <Button className="bg-blue-600 hover:bg-blue-700">
               <Plus className="h-4 w-4 mr-2" />
@@ -108,6 +223,7 @@ export const InventoryManagement = () => {
                   id="name"
                   value={newProduct.name || ""}
                   onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
+                  placeholder="Enter product name"
                 />
               </div>
               <div>
@@ -116,6 +232,7 @@ export const InventoryManagement = () => {
                   id="sku"
                   value={newProduct.sku || ""}
                   onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value })}
+                  placeholder="Enter SKU"
                 />
               </div>
               <div>
@@ -124,6 +241,7 @@ export const InventoryManagement = () => {
                   id="category"
                   value={newProduct.category || ""}
                   onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}
+                  placeholder="Enter category"
                 />
               </div>
               <div>
@@ -132,8 +250,10 @@ export const InventoryManagement = () => {
                   id="price"
                   type="number"
                   step="0.01"
+                  min="0"
                   value={newProduct.price || ""}
-                  onChange={(e) => setNewProduct({ ...newProduct, price: parseFloat(e.target.value) })}
+                  onChange={(e) => setNewProduct({ ...newProduct, price: parseFloat(e.target.value) || 0 })}
+                  placeholder="Enter price"
                 />
               </div>
               <div>
@@ -141,8 +261,10 @@ export const InventoryManagement = () => {
                 <Input
                   id="stock"
                   type="number"
+                  min="0"
                   value={newProduct.stock || ""}
-                  onChange={(e) => setNewProduct({ ...newProduct, stock: parseInt(e.target.value) })}
+                  onChange={(e) => setNewProduct({ ...newProduct, stock: parseInt(e.target.value) || 0 })}
+                  placeholder="Enter current stock"
                 />
               </div>
               <div>
@@ -150,8 +272,10 @@ export const InventoryManagement = () => {
                 <Input
                   id="minStock"
                   type="number"
+                  min="0"
                   value={newProduct.minStock || ""}
-                  onChange={(e) => setNewProduct({ ...newProduct, minStock: parseInt(e.target.value) })}
+                  onChange={(e) => setNewProduct({ ...newProduct, minStock: parseInt(e.target.value) || 5 })}
+                  placeholder="Enter minimum stock"
                 />
               </div>
               <div>
@@ -160,6 +284,7 @@ export const InventoryManagement = () => {
                   id="description"
                   value={newProduct.description || ""}
                   onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
+                  placeholder="Enter product description"
                 />
               </div>
               <Button onClick={addProduct} className="w-full">Add Product</Button>
@@ -167,6 +292,83 @@ export const InventoryManagement = () => {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Edit Product Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Product</DialogTitle>
+          </DialogHeader>
+          {editingProduct && (
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="edit-name">Product Name</Label>
+                <Input
+                  id="edit-name"
+                  value={editingProduct.name}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-sku">SKU</Label>
+                <Input
+                  id="edit-sku"
+                  value={editingProduct.sku}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, sku: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-category">Category</Label>
+                <Input
+                  id="edit-category"
+                  value={editingProduct.category}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-price">Price</Label>
+                <Input
+                  id="edit-price"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={editingProduct.price}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, price: parseFloat(e.target.value) || 0 })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-stock">Current Stock</Label>
+                <Input
+                  id="edit-stock"
+                  type="number"
+                  min="0"
+                  value={editingProduct.stock}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, stock: parseInt(e.target.value) || 0 })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-minStock">Minimum Stock</Label>
+                <Input
+                  id="edit-minStock"
+                  type="number"
+                  min="0"
+                  value={editingProduct.minStock}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, minStock: parseInt(e.target.value) || 5 })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-description">Description</Label>
+                <Textarea
+                  id="edit-description"
+                  value={editingProduct.description}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })}
+                />
+              </div>
+              <Button onClick={updateProduct} className="w-full">Update Product</Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader>
@@ -213,7 +415,11 @@ export const InventoryManagement = () => {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="sm">
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => editProduct(product)}
+                      >
                         <Edit className="h-4 w-4" />
                       </Button>
                     </TableCell>
