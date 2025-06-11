@@ -10,62 +10,24 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Search, ShoppingCart, DollarSign, TrendingUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-
-interface Sale {
-  id: string;
-  customerName: string;
-  items: Array<{ name: string; quantity: number; price: number }>;
-  total: number;
-  paymentMethod: "Cash" | "Card";
-  status: "Completed" | "Pending" | "Refunded";
-  date: string;
-}
+import { useAppStore } from "@/hooks/useAppStore";
 
 export const SalesManagement = () => {
   const { toast } = useToast();
-  const [sales, setSales] = useState<Sale[]>([
-    {
-      id: "S001",
-      customerName: "John Smith",
-      items: [
-        { name: "Wireless Headphones", quantity: 1, price: 99.99 },
-        { name: "Phone Case", quantity: 2, price: 19.99 }
-      ],
-      total: 139.97,
-      paymentMethod: "Card",
-      status: "Completed",
-      date: "2024-01-15"
-    },
-    {
-      id: "S002",
-      customerName: "Sarah Johnson",
-      items: [
-        { name: "Coffee Mug", quantity: 3, price: 12.99 }
-      ],
-      total: 38.97,
-      paymentMethod: "Cash",
-      status: "Completed",
-      date: "2024-01-15"
-    },
-    {
-      id: "S003",
-      customerName: "Mike Davis",
-      items: [
-        { name: "Laptop Stand", quantity: 1, price: 49.99 }
-      ],
-      total: 49.99,
-      paymentMethod: "Card",
-      status: "Pending",
-      date: "2024-01-16"
-    }
-  ]);
-
+  const { sales, addSale, updateSaleStatus } = useAppStore();
+  
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [newSale, setNewSale] = useState<Partial<Sale>>({
+  const [newSale, setNewSale] = useState<{
+    customerName: string;
+    items: Array<{ name: string; quantity: number; price: number }>;
+    paymentMethod: "Cash" | "Card" | "Momo Pay" | undefined;
+    transactionId?: string;
+  }>({
     customerName: "",
     items: [{ name: "", quantity: 1, price: 0 }],
-    paymentMethod: undefined
+    paymentMethod: undefined,
+    transactionId: ""
   });
 
   const filteredSales = sales.filter(sale =>
@@ -73,7 +35,7 @@ export const SalesManagement = () => {
     sale.id.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const addSale = () => {
+  const handleAddSale = () => {
     // Validation
     if (!newSale.customerName || !newSale.customerName.trim()) {
       toast({
@@ -113,51 +75,68 @@ export const SalesManagement = () => {
       return;
     }
 
+    // Validate transaction ID for non-cash payments
+    if ((newSale.paymentMethod === "Card" || newSale.paymentMethod === "Momo Pay") && !newSale.transactionId?.trim()) {
+      toast({
+        title: "Error",
+        description: `Transaction ID is required for ${newSale.paymentMethod} payments`,
+        variant: "destructive"
+      });
+      return;
+    }
+
     const total = newSale.items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
-    const sale: Sale = {
-      id: `S${(sales.length + 1).toString().padStart(3, '0')}`,
+    
+    addSale({
       customerName: newSale.customerName,
       items: newSale.items,
       total,
       paymentMethod: newSale.paymentMethod,
       status: "Completed",
       date: new Date().toISOString().split('T')[0]
-    };
-    
-    setSales([...sales, sale]);
+    });
     
     // Reset form and close dialog
     setNewSale({
       customerName: "",
       items: [{ name: "", quantity: 1, price: 0 }],
-      paymentMethod: undefined
+      paymentMethod: undefined,
+      transactionId: ""
     });
     setIsDialogOpen(false);
     
     toast({
       title: "Success",
-      description: "Sale created successfully"
+      description: "Sale created successfully and synced across all pages"
     });
   };
 
   const addItem = () => {
     setNewSale({
       ...newSale,
-      items: [...(newSale.items || []), { name: "", quantity: 1, price: 0 }]
+      items: [...newSale.items, { name: "", quantity: 1, price: 0 }]
     });
   };
 
   const removeItem = (index: number) => {
-    if (newSale.items && newSale.items.length > 1) {
+    if (newSale.items.length > 1) {
       const updatedItems = newSale.items.filter((_, i) => i !== index);
       setNewSale({ ...newSale, items: updatedItems });
     }
   };
 
   const updateItem = (index: number, field: string, value: any) => {
-    const updatedItems = [...(newSale.items || [])];
+    const updatedItems = [...newSale.items];
     updatedItems[index] = { ...updatedItems[index], [field]: value };
     setNewSale({ ...newSale, items: updatedItems });
+  };
+
+  const handleStatusUpdate = (saleId: string, newStatus: "Completed" | "Pending" | "Refunded") => {
+    updateSaleStatus(saleId, newStatus);
+    toast({
+      title: "Success",
+      description: `Sale status updated to ${newStatus}`
+    });
   };
 
   const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
@@ -183,7 +162,7 @@ export const SalesManagement = () => {
                 <Label htmlFor="customerName">Customer Name</Label>
                 <Input
                   id="customerName"
-                  value={newSale.customerName || ""}
+                  value={newSale.customerName}
                   onChange={(e) => setNewSale({ ...newSale, customerName: e.target.value })}
                   placeholder="Enter customer name"
                 />
@@ -191,7 +170,7 @@ export const SalesManagement = () => {
               
               <div>
                 <Label>Items</Label>
-                {newSale.items?.map((item, index) => (
+                {newSale.items.map((item, index) => (
                   <div key={index} className="grid grid-cols-4 gap-2 mt-2">
                     <Input
                       placeholder="Item name"
@@ -217,7 +196,7 @@ export const SalesManagement = () => {
                       type="button" 
                       variant="outline" 
                       onClick={() => removeItem(index)}
-                      disabled={newSale.items?.length === 1}
+                      disabled={newSale.items.length === 1}
                     >
                       Remove
                     </Button>
@@ -230,22 +209,37 @@ export const SalesManagement = () => {
 
               <div>
                 <Label htmlFor="paymentMethod">Payment Method</Label>
-                <Select value={newSale.paymentMethod} onValueChange={(value) => setNewSale({ ...newSale, paymentMethod: value as "Cash" | "Card" })}>
+                <Select value={newSale.paymentMethod} onValueChange={(value) => setNewSale({ ...newSale, paymentMethod: value as "Cash" | "Card" | "Momo Pay" })}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select payment method" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Cash">Cash</SelectItem>
                     <SelectItem value="Card">Card</SelectItem>
+                    <SelectItem value="Momo Pay">Momo Pay (Mobile Money)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
+              {(newSale.paymentMethod === "Card" || newSale.paymentMethod === "Momo Pay") && (
+                <div>
+                  <Label htmlFor="transactionId">
+                    Transaction ID {newSale.paymentMethod === "Momo Pay" ? "(Mobile Money)" : "(Card)"}
+                  </Label>
+                  <Input
+                    id="transactionId"
+                    value={newSale.transactionId}
+                    onChange={(e) => setNewSale({ ...newSale, transactionId: e.target.value })}
+                    placeholder={`Enter ${newSale.paymentMethod} transaction ID`}
+                  />
+                </div>
+              )}
+
               <div className="text-lg font-semibold">
-                Total: ${newSale.items?.reduce((sum, item) => sum + (item.quantity * item.price), 0).toFixed(2) || "0.00"}
+                Total: ${newSale.items.reduce((sum, item) => sum + (item.quantity * item.price), 0).toFixed(2)}
               </div>
 
-              <Button onClick={addSale} className="w-full">Create Sale</Button>
+              <Button onClick={handleAddSale} className="w-full">Create Sale</Button>
             </div>
           </DialogContent>
         </Dialog>
@@ -313,6 +307,7 @@ export const SalesManagement = () => {
                 <TableHead>Payment</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Date</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -336,16 +331,26 @@ export const SalesManagement = () => {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Badge 
-                      variant={
-                        sale.status === "Completed" ? "secondary" :
-                        sale.status === "Pending" ? "default" : "destructive"
-                      }
+                    <Select
+                      value={sale.status}
+                      onValueChange={(value) => handleStatusUpdate(sale.id, value as "Completed" | "Pending" | "Refunded")}
                     >
-                      {sale.status}
-                    </Badge>
+                      <SelectTrigger className="w-32">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Completed">Completed</SelectItem>
+                        <SelectItem value="Pending">Pending</SelectItem>
+                        <SelectItem value="Refunded">Refunded</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </TableCell>
                   <TableCell>{sale.date}</TableCell>
+                  <TableCell>
+                    <Button variant="outline" size="sm">
+                      View Details
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

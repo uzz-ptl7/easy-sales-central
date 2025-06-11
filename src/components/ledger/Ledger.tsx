@@ -8,92 +8,100 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { Plus, Search, BookOpen, TrendingUp, TrendingDown, DollarSign, Calendar } from "lucide-react";
-
-interface LedgerEntry {
-  id: string;
-  date: string;
-  description: string;
-  category: string;
-  type: "Income" | "Expense";
-  amount: number;
-  paymentMethod: "Cash" | "Card" | "Bank Transfer";
-  reference?: string;
-}
+import { useToast } from "@/hooks/use-toast";
+import { useAppStore } from "@/hooks/useAppStore";
 
 export const Ledger = () => {
-  const [entries, setEntries] = useState<LedgerEntry[]>([
-    {
-      id: "L001",
-      date: "2024-01-15",
-      description: "Sale - Wireless Headphones",
-      category: "Sales Revenue",
-      type: "Income",
-      amount: 139.97,
-      paymentMethod: "Card",
-      reference: "S001"
-    },
-    {
-      id: "L002",
-      date: "2024-01-15",
-      description: "Sale - Coffee Mugs",
-      category: "Sales Revenue",
-      type: "Income",
-      amount: 38.97,
-      paymentMethod: "Cash",
-      reference: "S002"
-    },
-    {
-      id: "L003",
-      date: "2024-01-14",
-      description: "Office Supplies Purchase",
-      category: "Office Expenses",
-      type: "Expense",
-      amount: 125.50,
-      paymentMethod: "Card"
-    },
-    {
-      id: "L004",
-      date: "2024-01-13",
-      description: "Rent Payment",
-      category: "Operating Expenses",
-      type: "Expense",
-      amount: 2500.00,
-      paymentMethod: "Bank Transfer"
-    }
-  ]);
-
+  const { toast } = useToast();
+  const { ledgerEntries, addLedgerEntry } = useAppStore();
+  
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
-  const [newEntry, setNewEntry] = useState<Partial<LedgerEntry>>({});
+  const [newEntry, setNewEntry] = useState<{
+    date: string;
+    description: string;
+    category: string;
+    type: "Income" | "Expense" | undefined;
+    amount: number | "";
+    paymentMethod: "Cash" | "Card" | "Bank Transfer" | "Momo Pay" | undefined;
+    reference: string;
+  }>({
+    date: new Date().toISOString().split('T')[0],
+    description: "",
+    category: "",
+    type: undefined,
+    amount: "",
+    paymentMethod: undefined,
+    reference: ""
+  });
 
-  const filteredEntries = entries.filter(entry => {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  const filteredEntries = ledgerEntries.filter(entry => {
     const matchesSearch = entry.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          entry.category.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = filterType === "all" || entry.type.toLowerCase() === filterType;
     return matchesSearch && matchesType;
   });
 
-  const addEntry = () => {
-    if (newEntry.description && newEntry.amount && newEntry.type && newEntry.category) {
-      const entry: LedgerEntry = {
-        id: `L${(entries.length + 1).toString().padStart(3, '0')}`,
-        date: newEntry.date || new Date().toISOString().split('T')[0],
-        description: newEntry.description,
-        category: newEntry.category,
-        type: newEntry.type,
-        amount: newEntry.amount,
-        paymentMethod: newEntry.paymentMethod || "Cash",
-        reference: newEntry.reference
-      };
-      setEntries([...entries, entry]);
-      setNewEntry({});
+  const handleAddEntry = () => {
+    if (!newEntry.description?.trim()) {
+      toast({
+        title: "Error",
+        description: "Description is required",
+        variant: "destructive"
+      });
+      return;
     }
+
+    if (!newEntry.amount || newEntry.amount <= 0) {
+      toast({
+        title: "Error",
+        description: "Valid amount is required",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!newEntry.type || !newEntry.category || !newEntry.paymentMethod) {
+      toast({
+        title: "Error",
+        description: "All fields are required",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    addLedgerEntry({
+      date: newEntry.date,
+      description: newEntry.description,
+      category: newEntry.category,
+      type: newEntry.type,
+      amount: Number(newEntry.amount),
+      paymentMethod: newEntry.paymentMethod,
+      reference: newEntry.reference || undefined
+    });
+
+    setNewEntry({
+      date: new Date().toISOString().split('T')[0],
+      description: "",
+      category: "",
+      type: undefined,
+      amount: "",
+      paymentMethod: undefined,
+      reference: ""
+    });
+    setIsDialogOpen(false);
+
+    toast({
+      title: "Success",
+      description: "Ledger entry added successfully"
+    });
   };
 
-  const totalIncome = entries.filter(e => e.type === "Income").reduce((sum, e) => sum + e.amount, 0);
-  const totalExpenses = entries.filter(e => e.type === "Expense").reduce((sum, e) => sum + e.amount, 0);
+  const totalIncome = ledgerEntries.filter(e => e.type === "Income").reduce((sum, e) => sum + e.amount, 0);
+  const totalExpenses = ledgerEntries.filter(e => e.type === "Expense").reduce((sum, e) => sum + e.amount, 0);
   const netProfit = totalIncome - totalExpenses;
 
   const categories = ["Sales Revenue", "Service Revenue", "Office Expenses", "Operating Expenses", "Marketing", "Utilities", "Equipment"];
@@ -102,7 +110,7 @@ export const Ledger = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-gray-900">Financial Ledger</h1>
-        <Dialog>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button className="bg-blue-600 hover:bg-blue-700">
               <Plus className="h-4 w-4 mr-2" />
@@ -119,7 +127,7 @@ export const Ledger = () => {
                 <Input
                   id="date"
                   type="date"
-                  value={newEntry.date || new Date().toISOString().split('T')[0]}
+                  value={newEntry.date}
                   onChange={(e) => setNewEntry({ ...newEntry, date: e.target.value })}
                 />
               </div>
@@ -127,8 +135,9 @@ export const Ledger = () => {
                 <Label htmlFor="description">Description</Label>
                 <Input
                   id="description"
-                  value={newEntry.description || ""}
+                  value={newEntry.description}
                   onChange={(e) => setNewEntry({ ...newEntry, description: e.target.value })}
+                  placeholder="Enter description"
                 />
               </div>
               <div>
@@ -162,13 +171,15 @@ export const Ledger = () => {
                   id="amount"
                   type="number"
                   step="0.01"
-                  value={newEntry.amount || ""}
-                  onChange={(e) => setNewEntry({ ...newEntry, amount: parseFloat(e.target.value) })}
+                  min="0"
+                  value={newEntry.amount}
+                  onChange={(e) => setNewEntry({ ...newEntry, amount: parseFloat(e.target.value) || "" })}
+                  placeholder="Enter amount"
                 />
               </div>
               <div>
                 <Label htmlFor="paymentMethod">Payment Method</Label>
-                <Select value={newEntry.paymentMethod} onValueChange={(value) => setNewEntry({ ...newEntry, paymentMethod: value as "Cash" | "Card" | "Bank Transfer" })}>
+                <Select value={newEntry.paymentMethod} onValueChange={(value) => setNewEntry({ ...newEntry, paymentMethod: value as "Cash" | "Card" | "Bank Transfer" | "Momo Pay" })}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select payment method" />
                   </SelectTrigger>
@@ -176,6 +187,7 @@ export const Ledger = () => {
                     <SelectItem value="Cash">Cash</SelectItem>
                     <SelectItem value="Card">Card</SelectItem>
                     <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                    <SelectItem value="Momo Pay">Momo Pay</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -183,11 +195,12 @@ export const Ledger = () => {
                 <Label htmlFor="reference">Reference (Optional)</Label>
                 <Input
                   id="reference"
-                  value={newEntry.reference || ""}
+                  value={newEntry.reference}
                   onChange={(e) => setNewEntry({ ...newEntry, reference: e.target.value })}
+                  placeholder="Enter reference"
                 />
               </div>
-              <Button onClick={addEntry} className="w-full">Add Entry</Button>
+              <Button onClick={handleAddEntry} className="w-full">Add Entry</Button>
             </div>
           </DialogContent>
         </Dialog>
@@ -233,7 +246,7 @@ export const Ledger = () => {
             <BookOpen className="h-4 w-4 text-purple-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-gray-900">{entries.length}</div>
+            <div className="text-2xl font-bold text-gray-900">{ledgerEntries.length}</div>
           </CardContent>
         </Card>
       </div>
@@ -243,7 +256,7 @@ export const Ledger = () => {
         <CardHeader>
           <CardTitle className="flex items-center">
             <BookOpen className="h-5 w-5 mr-2" />
-            Ledger Entries
+            Ledger Entries (Auto-synced from Sales & Payments)
           </CardTitle>
           <div className="flex gap-4">
             <div className="relative flex-1">
